@@ -54,6 +54,63 @@ class TestSaleOrder(SetUpMagentoSynchronized):
         self.assertEqual(len(binding), 1)
         return binding
 
+    def test_import_options(self):
+        """Test import options such as the account_analytic_account and
+        the fiscal_position that can be specified at different level of the
+        backend models (backend, wesite, store and storeview)
+        """
+        binding = self._import_sale_order(900000691)
+        self.assertFalse(binding.project_id)
+        self.assertFalse(binding.fiscal_position)
+        # keep a reference to backend models the website
+        storeview_id = binding.storeview_id
+        store_id = storeview_id.store_id
+        website_id = store_id.website_id
+        binding.openerp_id.unlink()
+        binding.unlink()
+        # define options at the backend level
+        fp1 = self.env['account.fiscal.position'].create({'name': "fp1"})
+        account_analytic_id = self.env['account.analytic.account'].create(
+            {'name': 'aaa1'})
+        self.backend.account_analytic_id = account_analytic_id
+        self.backend.fiscal_position_id = fp1.id
+        binding = self._import_sale_order(900000691)
+        self.assertEquals(binding.project_id, account_analytic_id)
+        self.assertEquals(binding.fiscal_position, fp1)
+        binding.openerp_id.unlink()
+        binding.unlink()
+        # define options at the website level
+        account_analytic_id = self.env['account.analytic.account'].create(
+            {'name': 'aaa2'})
+        fp2 = self.env['account.fiscal.position'].create({'name': "fp2"})
+        website_id.specific_account_analytic_id = account_analytic_id
+        website_id.specific_fiscal_position_id = fp2.id
+        binding = self._import_sale_order(900000691)
+        self.assertEquals(binding.project_id, account_analytic_id)
+        self.assertEquals(binding.fiscal_position, fp2)
+        binding.openerp_id.unlink()
+        binding.unlink()
+        # define options at the store level
+        account_analytic_id = self.env['account.analytic.account'].create(
+            {'name': 'aaa3'})
+        fp3 = self.env['account.fiscal.position'].create({'name': "fp3"})
+        store_id.specific_account_analytic_id = account_analytic_id
+        store_id.specific_fiscal_position_id = fp3.id
+        binding = self._import_sale_order(900000691)
+        self.assertEquals(binding.project_id, account_analytic_id)
+        self.assertEquals(binding.fiscal_position, fp3)
+        binding.openerp_id.unlink()
+        binding.unlink()
+        # define options at the storeview level
+        account_analytic_id = self.env['account.analytic.account'].create(
+            {'name': 'aaa4'})
+        fp4 = self.env['account.fiscal.position'].create({'name': "fp4"})
+        storeview_id.specific_account_analytic_id = account_analytic_id
+        storeview_id.specific_fiscal_position_id = fp4.id
+        binding = self._import_sale_order(900000691)
+        self.assertEquals(binding.project_id, account_analytic_id)
+        self.assertEquals(binding.fiscal_position, fp4)
+
     def test_copy_quotation(self):
         """ Copy a sales order with copy_quotation move bindings """
         binding = self._import_sale_order(900000691)
@@ -201,3 +258,30 @@ class TestSaleOrder(SetUpMagentoSynchronized):
         partner_binding = binding.partner_id.magento_bind_ids
         self.assertEqual(partner_binding.magento_id, 'guestorder:900000700')
         self.assertTrue(partner_binding.guest_customer)
+
+    def test_import_carrier_product(self):
+        """ Product of a carrier is used in the sale line """
+        product = self.env['product.product'].create({
+            'name': 'Carrier Product',
+        })
+        self.env['delivery.carrier'].create({
+            'name': 'Flatrate',
+            'partner_id': self.env.ref('base.main_partner').id,
+            'product_id': product.id,
+            'magento_code': 'flatrate_flatrate',
+            'magento_carrier_code': 'flatrate_flatrate',
+        })
+        binding = self._import_sale_order(900000691)
+        # check if we have a line with the carrier product,
+        # which is the shipping line
+        shipping_line = False
+        for line in binding.order_line:
+            if line.product_id == product:
+                shipping_line = True
+        self.assertTrue(shipping_line,
+                        msg='No shipping line with the product of the carrier '
+                            'has been found. Line names: %s' %
+                            (', '.join("%s (%s)" % (line.name,
+                                                    line.product_id.name)
+                                       for line
+                                       in binding.order_line),))

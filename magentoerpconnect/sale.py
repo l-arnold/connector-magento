@@ -465,7 +465,7 @@ class SaleOrderImportMapper(ImportMapper):
 
         if values.get('carrier_id'):
             carrier = self.env['delivery.carrier'].browse(values['carrier_id'])
-            line_builder.product_id = carrier.product_id
+            line_builder.product = carrier.product_id
 
         line = (0, 0, line_builder.get_line())
         values['order_line'].append(line)
@@ -569,6 +569,18 @@ class SaleOrderImportMapper(ImportMapper):
         if team:
             return {'section_id': team.id}
 
+    @mapping
+    def project_id(self, record):
+        project_id = self.options.storeview.account_analytic_id
+        if project_id:
+            return {'project_id': project_id.id}
+
+    @mapping
+    def fiscal_position(self, record):
+        fiscal_position = self.options.storeview.fiscal_position_id
+        if fiscal_position:
+            return {'fiscal_position': fiscal_position.id}
+
     # partner_id, partner_invoice_id, partner_shipping_id
     # are done in the importer
 
@@ -587,6 +599,11 @@ class SaleOrderImportMapper(ImportMapper):
         comment_mapper = self.unit_for(SaleOrderCommentImportMapper)
         map_record = comment_mapper.map_record(record)
         return map_record.values(**self.options)
+
+    @mapping
+    def pricelist_id(self, record):
+        pricelist_mapper = self.unit_for(PricelistSaleOrderImportMapper)
+        return pricelist_mapper.map_record(record).values(**self.options)
 
 
 @magento
@@ -932,6 +949,15 @@ class SaleOrderImporter(MagentoImporter):
 
 
 SaleOrderImport = SaleOrderImporter  # deprecated
+
+
+@magento
+class PricelistSaleOrderImportMapper(ImportMapper):
+    """ Mapper for importing the sales order pricelist
+
+    Does nothing by default. Replaced in magentoerpconnect_pricing.
+    """
+    _model_name = 'magento.sale.order'
 
 
 @magento
